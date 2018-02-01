@@ -1,6 +1,7 @@
 pragma solidity ^0.4.19;
 
 contract VMC {
+<<<<<<< HEAD
   event TxToShard(address indexed to, int indexed shardId, int receiptId);
   event CollationAdded(int indexed shardId, uint expectedPeriodNumber, 
                      bytes32 periodStartPrevHash, bytes32 parentHash,
@@ -9,6 +10,11 @@ contract VMC {
                      int number, bool isNewHead, int score);
   event Deposit(address validator, int index);
   event Withdraw(int validatorIndex);
+=======
+  using RLP for RLP.RLPItem;
+  using RLP for RLP.Iterator;
+  using RLP for bytes;
+>>>>>>> e362985d3... loops over shards and checks if eligible proposer
 
   struct Validator {
     // Amount of wei the validator holds
@@ -64,11 +70,26 @@ contract VMC {
   uint constant periodLength = 5;
   int constant public shardCount = 100;
   // The exact deposit size which you have to deposit to become a validator
+<<<<<<< HEAD
   uint constant depositSize = 100 ether;
   // Number of periods ahead of current period, which the contract
   // is able to return the collator of that period
   uint constant lookAheadPeriods = 4;
 
+=======
+  uint depositSize;
+  // Any given validator randomly gets allocated to some number of shards every SHUFFLING_CYCLE
+  int shufflingCycleLength;
+  // Gas limit of the signature validation code
+  uint sigGasLimit;
+  // Is a valcode addr deposited now?
+  mapping (address => bool) isValcodeDeposited;
+  uint periodLength;
+  int numValidatorsPerCycle;
+  int public shardCount;
+  bytes32 addHeaderLogTopic;
+  SigHasherContract sighasher;
+>>>>>>> e362985d3... loops over shards and checks if eligible proposer
   // Log the latest period number of the shard
   mapping (int => int) periodHead;
 
@@ -119,9 +140,15 @@ contract VMC {
       addr: msg.sender
     });
     ++numValidators;
+<<<<<<< HEAD
     isValidatorDeposited[msg.sender] = true;
     
     Deposit(msg.sender, index);
+=======
+    isValcodeDeposited[msg.sender] = true;
+
+    log2(keccak256("deposit()"), bytes32(msg.sender), bytes32(index));
+>>>>>>> e362985d3... loops over shards and checks if eligible proposer
     return index;
   }
 
@@ -138,12 +165,107 @@ contract VMC {
     Withdraw(_validatorIndex);
   }
 
+<<<<<<< HEAD
   // Attempts to process a collation header, returns true on success, reverts on failure.
   function addHeader(int _shardId, uint _expectedPeriodNumber, bytes32 _periodStartPrevHash,
                      bytes32 _parentHash, bytes32 _transactionRoot,
                      address _coinbase, bytes32 _stateRoot, bytes32 _receiptRoot,
                      int _number) public returns(bool) {
     HeaderVars memory headerVars;
+=======
+  function sample(int _shardId) public constant returns(address) {
+    require(block.number >= periodLength);
+    var cycle = int(block.number) / shufflingCycleLength;
+    int cycleStartBlockNumber = cycle * shufflingCycleLength - 1;
+    if (cycleStartBlockNumber < 0)
+      cycleStartBlockNumber = 0;
+    int cycleSeed = int(block.blockhash(uint(cycleStartBlockNumber)));
+    // originally, error occurs when block.number <= 4 because
+    // `seed_block_number` becomes negative in these cases.
+    int seed = int(block.blockhash(block.number - (block.number % uint(periodLength)) - 1));
+
+    uint indexInSubset = uint(keccak256(seed, bytes32(_shardId))) % uint(numValidatorsPerCycle);
+    uint validatorIndex = uint(keccak256(cycleSeed, bytes32(_shardId), bytes32(indexInSubset))) % uint(getValidatorsMaxIndex());
+
+    if (validators[int(validatorIndex)].cycle > cycle)
+      return 0x0;
+    else
+      return validators[int(validatorIndex)].addr;
+  }
+
+  // Get all possible shard ids that the given _valcodeAddr
+  // may be sampled in the current cycle
+  function getShardList(address _validatorAddr) public constant returns(bool[100]) {
+    bool[100] memory shardList;
+    int cycle = int(block.number) / shufflingCycleLength;
+    int cycleStartBlockNumber = cycle * shufflingCycleLength - 1;
+    if (cycleStartBlockNumber < 0)
+      cycleStartBlockNumber = 0;
+
+    var cycleSeed = block.blockhash(uint(cycleStartBlockNumber));
+    int validatorsMaxIndex = getValidatorsMaxIndex();
+    if (numValidators != 0) {
+      for (uint8 shardId = 0; shardId < 100; ++shardId) {
+        shardList[shardId] = false;
+        for (uint8 possibleIndexInSubset = 0; possibleIndexInSubset < 100; ++possibleIndexInSubset) {
+          uint validatorIndex = uint(keccak256(cycleSeed, bytes32(shardId), bytes32(possibleIndexInSubset)))
+                             % uint(validatorsMaxIndex);
+          if (_validatorAddr == validators[int(validatorIndex)].addr) {
+            shardList[shardId] = true;
+            break;
+          }
+        }
+      }
+    }
+    return shardList;
+  }
+
+  // function checkHeader(int _shardId, bytes32 _periodStartPrevhash, int _expectedPeriodNumber) internal {
+  //   // Check if the header is valid
+  //   assert(_shardId >= 0 && _shardId < shardCount);
+  //   assert(block.number >= periodLength);
+  //   assert(uint(_expectedPeriodNumber) == block.number / periodLength);
+  //   assert(_periodStartPrevhash == block.blockhash(uint(_expectedPeriodNumber)*periodLength - 1));
+
+  //   // Check if this header already exists
+  //   var entireHeaderHash = keccak256(_header);
+  //   assert(entireHeaderHash != bytes32(0));
+  //   assert(collationHeaders[shardId][entireHeaderHash].score == 0);
+  // }
+
+  struct Header {
+      int shardId;
+      uint expectedPeriodNumber;
+      bytes32 periodStartPrevhash;
+      bytes32 parentCollationHash;
+      bytes32 txListRoot;
+      address collationCoinbase;
+      bytes32 postStateRoot;
+      bytes32 receiptRoot;
+      int collationNumber;
+      bytes sig;
+    }
+
+  function addHeader(bytes _header) public returns(bool) {
+    // require(_header.length <= 4096);
+    // TODO
+    // values = RLPList(header, [num, num, bytes32, bytes32, bytes32, address, bytes32, bytes32, num, bytes])
+    // return True
+    bytes memory mHeader = _header;
+    var RLPList = mHeader.toRLPItem(true).iterator();
+    var header = Header({
+      shardId: RLPList.next().toInt(),
+      expectedPeriodNumber: RLPList.next().toUint(),
+      periodStartPrevhash: RLPList.next().toBytes32(),
+      parentCollationHash: RLPList.next().toBytes32(),
+      txListRoot: RLPList.next().toBytes32(),
+      collationCoinbase: RLPList.next().toAddress(),
+      postStateRoot: RLPList.next().toBytes32(),
+      receiptRoot: RLPList.next().toBytes32(),
+      collationNumber: RLPList.next().toInt(),
+      sig: RLPList.next().toBytes()
+    });
+>>>>>>> e362985d3... loops over shards and checks if eligible proposer
 
     // Check if the header is valid
     require((_shardId >= 0) && (_shardId < shardCount));
@@ -165,9 +287,25 @@ contract VMC {
     assert(periodHead[_shardId] < int(_expectedPeriodNumber));
 
     // Check the signature with validation_code_addr
+<<<<<<< HEAD
     headerVars.validatorAddr = getEligibleProposer(_shardId, block.number/periodLength);
     require(headerVars.validatorAddr != 0x0);
     require(msg.sender == headerVars.validatorAddr);
+=======
+    var collatorValcodeAddr = sample(header.shardId);
+    if (collatorValcodeAddr == 0x0)
+        return false;
+
+    // assembly {
+      // TODO next block
+    // }
+    // sighash = extract32(raw_call(self.sighasher_addr, header, gas=200000, outsize=32), 0)
+    // assert extract32(raw_call(collator_valcode_addr, concat(sighash, sig), gas=self.sig_gas_limit, outsize=32), 0) == as_bytes32(1)
+
+    // Check score == collation_number
+    var _score = collationHeaders[header.shardId][header.parentCollationHash].score + 1;
+    assert(header.collationNumber == _score);
+>>>>>>> e362985d3... loops over shards and checks if eligible proposer
 
     // Check score == collationNumber
     headerVars.score = collationHeaders[_shardId][_parentHash].score + 1;
@@ -187,6 +325,21 @@ contract VMC {
       shardHead[_shardId] = headerVars.entireHeaderHash;
       headerVars.isNewHead = true;
     }
+<<<<<<< HEAD
+=======
+    // Emit log
+    // TODO LOG
+    // log1(addHeaderLogTopic, _header);
+
+    return true;
+  }
+
+  function getPeriodStartPrevhash(uint _expectedPeriodNumber) public constant returns(bytes32) {
+    uint blockNumber = _expectedPeriodNumber * periodLength - 1;
+    require(block.number > blockNumber);
+    return block.blockhash(blockNumber);
+  }
+>>>>>>> e362985d3... loops over shards and checks if eligible proposer
 
     CollationAdded(_shardId, _expectedPeriodNumber, _periodStartPrevHash,
                    _parentHash, _transactionRoot, _coinbase, _stateRoot, 
@@ -212,12 +365,21 @@ contract VMC {
     });
     var receiptId = numReceipts;
     ++numReceipts;
+<<<<<<< HEAD
     
     TxToShard(_to, _shardId, receiptId);
     return receiptId;
   }
   
   function updateGasPrice(int _receiptId, uint _txGasprice) public payable returns(bool) {
+=======
+
+    log3(keccak256("tx_to_shard()"), bytes32(_to), bytes32(_shardId), bytes32(receiptId));
+    return receiptId;
+  }
+
+  function updataGasPrice(int _receiptId, uint _txGasprice) public payable returns(bool) {
+>>>>>>> e362985d3... loops over shards and checks if eligible proposer
     require(receipts[_receiptId].sender == msg.sender);
     receipts[_receiptId].txGasprice = _txGasprice;
     return true;

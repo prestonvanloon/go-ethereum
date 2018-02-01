@@ -3,6 +3,7 @@ package sharding
 import (
 	"context"
 	"fmt"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 )
@@ -28,7 +29,10 @@ func subscribeBlockHeaders(c *Client) error {
 			// Query the current state to see if we are an eligible proposer
 			log.Info(fmt.Sprintf("received new header %v", head.Number.String()))
 			// TODO: Only run this code on certain periods?
-			watchShards(head)
+			err := watchShards(c, head)
+			if err != nil {
+				return err
+			}
 		}
 	}
 }
@@ -36,6 +40,29 @@ func subscribeBlockHeaders(c *Client) error {
 // watchShards checks if we are an eligible proposer for collation for
 // the available shards in the VMC. The function calls getEligibleProposer from
 // the VMC and proposes a collation if conditions are met
-func watchShards(head types.Header) {
+func watchShards(c *Client, head *types.Header) error {
 
+	accounts := c.keystore.Accounts()
+	if len(accounts) == 0 {
+		return fmt.Errorf("no accounts found")
+	}
+
+	if err := c.unlockAccount(accounts[0]); err != nil {
+		return err
+	}
+
+	ops := bind.CallOpts{}
+	count, err := c.vmc.VMCCaller.ShardCount(&ops)
+	if err != nil {
+		return err
+	}
+
+	s := 0
+	for s < int(count.Int64()) {
+		// Checks if we are an eligible proposer according to the VMC
+		log.Info(fmt.Sprintf("shard %d", s))
+		s++
+	}
+
+	return nil
 }
