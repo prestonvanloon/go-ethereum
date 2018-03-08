@@ -10,8 +10,12 @@ import (
 )
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 type collatorClient interface {
+=======
+type collator interface {
+>>>>>>> 865b8d1d0... fixed all the typos during integration, manually tested
 	Account() *accounts.Account
 	ChainReader() ethereum.ChainReader
 	VMCCaller() *contracts.VMCCaller
@@ -22,8 +26,13 @@ type collatorClient interface {
 // we are an eligible proposer for collations. Then, it finds the pending tx's
 // from the running geth node and sorts them by descending order of gas price,
 // eliminates those that ask for too much gas, and routes them over
+<<<<<<< HEAD
 // to the VMC to create a collation
 func subscribeBlockHeaders(c *Client) error {
+=======
+// to the SMC to create a collation
+func subscribeBlockHeaders(c collator) error {
+>>>>>>> 865b8d1d0... fixed all the typos during integration, manually tested
 	headerChan := make(chan *types.Header, 16)
 
 <<<<<<< HEAD
@@ -68,7 +77,11 @@ func watchShards(c *Client, head *types.Header) error {
 // collation for the available shards in the VMC. The function calls
 // getEligibleProposer from the VMC and proposes a collation if
 // conditions are met
+<<<<<<< HEAD
 func checkShardsForProposal(c collatorClient, head *types.Header) error {
+=======
+func checkSMCForCollator(c collator, head *types.Header) error {
+>>>>>>> 865b8d1d0... fixed all the typos during integration, manually tested
 	account := c.Account()
 >>>>>>> 6ae47790b... refactor account, and unlock account when client is created
 
@@ -99,9 +112,15 @@ func checkShardsForProposal(c collatorClient, head *types.Header) error {
 =======
 // isAccountInValidatorSet checks if the client is in the validator pool because
 // we can't guarantee our tx for deposit will be in the next block header we receive.
+<<<<<<< HEAD
 // The function calls IsValidatorDeposited from the VMC and returns true if
 // the client is in the validator pool
 func isAccountInValidatorSet(c collatorClient) (bool, error) {
+=======
+// The function calls IsCollatorDeposited from the SMC and returns true if
+// the client is in the collator pool
+func isAccountInCollatorPool(c collator) (bool, error) {
+>>>>>>> 865b8d1d0... fixed all the typos during integration, manually tested
 	account := c.Account()
 >>>>>>> 6ae47790b... refactor account, and unlock account when client is created
 
